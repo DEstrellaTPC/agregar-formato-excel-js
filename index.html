@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Formato Excel</title>
+	<style>
+		:root {
+			font-size: 16px;;
+		}
+		body *{
+			box-sizing: border-box;
+		}
+		body {
+			font-family: Arial, sans-serif;
+			margin: 1rem;
+		}
+		.selector-archivo {
+			margin-bottom: .5rem;
+			display:inline-block;
+			margin-right:1rem;
+		}
+		.selector-archivo input[type="file"] {
+			font-size: 1em;
+			width:33em;
+		}
+		.selector-hojas {
+			font-size: 1.2rem;
+		}
+		.oculto {
+			display: none;
+		}
+		.tabla-excel {
+			border-collapse: collapse;
+			width: 100%;
+			margin-top: 10px;
+			border-radius:.5rem;
+		}
+		.tabla-excel th,
+		.tabla-excel td {
+			border: 1px solid #ddd;
+			padding: 8px;
+			text-align: left;
+			position: relative;
+			vertical-align: top;
+		}
+		.tabla-excel th {
+			background-color: #f2f2f2;
+		}
+		.celda-texto {
+			cursor: pointer;
+		}
+		.celda-texto:hover::after {
+			content: 'Click para copiar';
+			position: absolute;
+			top: -1em;
+			left: 50%;
+			transform: translateX(-50%);
+			background: #333;
+			color: white;
+			padding: 2px 8px;
+			border-radius: 3px;
+			font-size: 12px;
+			white-space: nowrap;
+			z-index: 99;
+		}
+		.notificacion-copiado {
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			background: #4CAF50;
+			color: white;
+			padding: 2px 8px;
+			border-radius: 3px;
+			font-size: 12px;
+			white-space: nowrap;
+			z-index: 100;
+		}
+		.geoloc,
+		.geoloc + tr,
+		.language,
+		td:has([type="checkbox"]),
+		.preview,
+		.extended {
+			background-color: #1c4587;
+			color: white;
+			pointer-events: none;
+
+		}
+		.language td,
+		.geoloc td,
+		.geoloc + tr td,
+		.preview td,
+		.extended td {
+			text-align: center!important;
+			font-size:.8rem;
+			vertical-align: middle;
+			border-color:#1c4587;
+		}
+		.language td,
+		.geoloc td[rowspan],
+		.geoloc + tr td{
+			border-bottom-color:#FFF3;
+		}
+	</style>
+</head>
+<body>
+	<div class="selector-archivo">
+		<input type="file" id="archivoExcel" accept=".xlsx, .xls">
+	</div>
+
+	<select id="selectorHojas" class="selector-hojas oculto">
+		<!-- Las opciones se llenarán con JavaScript -->
+	</select>
+
+	<div id="contenedorHojas">
+		<!-- Aquí se mostrarán las hojas -->
+	</div>
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+	<script>
+		// Elementos del DOM
+		const archivoExcel = document.getElementById('archivoExcel');
+		const selectorHojas = document.getElementById('selectorHojas');
+		const contenedorHojas = document.getElementById('contenedorHojas');
+
+		// Evento para cargar el archivo
+		archivoExcel.addEventListener('change', function(e) {
+			const archivo = e.target.files[0];
+			if (!archivo) return;
+
+			const lector = new FileReader();
+			lector.onload = function(e) {
+				procesarExcel(e.target.result);
+			};
+			lector.readAsArrayBuffer(archivo);
+		});
+
+		// Función principal para procesar el Excel
+		function procesarExcel(datos) {
+			try {
+				const libro = XLSX.read(datos);
+				const nombresHojas = libro.SheetNames;
+
+				// Limpiar contenedores
+				selectorHojas.innerHTML = '';
+				contenedorHojas.innerHTML = '';
+				selectorHojas.classList.remove('oculto');
+
+				// Procesar cada hoja
+				primeraVisible = 0;
+				nombresHojas.forEach(function(nombreHoja, indice) {
+					const hoja = libro.Sheets[nombreHoja];
+					const esOculta = libro.Workbook?.Sheets?.some(function(s) {
+						return s.name === nombreHoja && s.Hidden === 1;
+					});
+
+					// Agregar al selector
+					agregarOpcionSelector(nombreHoja, indice, esOculta);
+
+					// Solo procesar hojas visibles
+					if (!esOculta) {
+						console.log('Hoja visible:', indice, nombreHoja);
+						if (primeraVisible === 0) {
+							primeraVisible = indice;
+						}
+						const tablaHtml = generarTablaDesdeHoja(hoja);
+						const contenedorTabla = crearContenedorTabla(tablaHtml, indice);
+						contenedorHojas.appendChild(contenedorTabla);
+
+						// Ocultar todas excepto la primera
+						if (indice > primeraVisible) {
+							contenedorTabla.style.display = 'none';
+						}
+					}
+					else {
+						console.log('Hoja oculta', indice, nombreHoja);
+					}
+				});
+
+				// Configurar evento de cambio
+				selectorHojas.addEventListener('change', function() {
+					cambiarHojaSeleccionada(this.value);
+				});
+
+			} catch (error) {
+				mostrarError('Error al procesar el archivo: ' + error.message);
+			}
+		}
+
+		// Función para generar la tabla HTML desde una hoja de Excel
+		function generarTablaDesdeHoja(hoja) {
+			const html = XLSX.utils.sheet_to_html(hoja, {
+				editable: false,
+				header: '',
+				footer: ''
+			});
+
+			// Convertir a DOM para manipulación
+			const parser = new DOMParser();
+			const doc = parser.parseFromString(html, 'text/html');
+			const tabla = doc.querySelector('table');
+
+			// Agregar clases y estilos
+			tabla.classList.add('tabla-excel');
+
+			// Procesar etiquetas y saltos de línea
+			normalizarEtiquetasYBR(tabla);
+
+			// Formato fila geolocation
+			const patronesEspeciales = {
+				'language': 'language',
+				'geoloc': 'geoloc',
+				'preview copy': 'preview',
+				'extended copy': 'extended',
+			};
+			tabla.querySelectorAll('tr').forEach(function(fila) {
+				const primeraCelda = fila.querySelector('td:first-child, th:first-child');
+				if (primeraCelda) {
+					const texto = primeraCelda.textContent.trim().toLowerCase();
+					for (const [patron, clase] of Object.entries(patronesEspeciales)) {
+						if (texto.includes(patron)) {
+							fila.classList.add(clase);
+							break;
+						}
+					}
+				}
+			});
+
+
+			return tabla;
+		}
+
+		// Función para normalizar etiquetas y saltos de línea
+		// FUNCIONA A MEDIAS :/
+		function normalizarEtiquetasYBR(elemento) {
+			agregarEtiquetasDeFormato(elemento);
+			remplazarTextos(elemento);
+		}
+
+		function moverBlancos(tag, et, htm = false){
+			if(tag.textContent.trim() === '') return;
+
+			const ch1 = '⎨', ch2 = '⎬', br = '<br>';
+			let texto = tag.innerHTML;
+			texto = ch1 + texto + ch2;
+
+			if (texto.includes(ch1 + ' ')) {
+				texto = texto.replace(ch1 + ' ', ' ' + ch1);
+			}
+			if (texto.includes(' ' + ch2)) {
+				texto = texto.replace(' ' + ch2, ch2 + ' ');
+			}
+			if (texto.includes(ch1 + br)) {
+				texto = texto.replace(ch1 + br, br + ch1);
+			}
+			if (texto.includes(br + ch2)) {
+				texto = texto.replace(br + ch2, ch2 + br);
+			}
+			if (texto.includes(ch1 + ' ')) {
+				texto = texto.replace(ch1 + ' ', ' ' + ch1);
+			}
+			if (texto.includes(' ' + ch2)) {
+				texto = texto.replace(' ' + ch2, ch2 + ' ');
+			}
+
+			texto = texto.replace(ch1, '&lt;' + et + '&gt;').replace(ch2, '&lt;/' + et + '&gt;');
+			tag.innerHTML = texto;
+
+		}
+		// Agregar etiquetas de formato visualmente
+		function agregarEtiquetasDeFormato(elemento) {
+			// Agregar <strong>
+			elemento.querySelectorAll('b').forEach(function(tag) {
+				moverBlancos(tag, 'strong');
+			});
+
+			// Agregar <i>
+			elemento.querySelectorAll('i').forEach(function(tag) {
+				moverBlancos(tag, 'i');
+			});
+
+			// Agregar <u>
+			elemento.querySelectorAll('u').forEach(function(tag) {
+				moverBlancos(tag, 'u');
+			});
+
+			// Agregar <del>
+			elemento.querySelectorAll('del').forEach(function(tag) {
+				moverBlancos(tag, 'del');
+			});
+
+			elemento.querySelectorAll('span').forEach(function(tag) {
+				if(tag.style.textDecoration === 'underline') {
+					moverBlancos(tag, 'u');
+				}
+				if(tag.style.fontWeight === 'bold') {
+					moverBlancos(tag, 'strong');
+				}
+				if(tag.style.fontStyle === 'italic') {
+					moverBlancos(tag, 'i');
+				}
+				if(tag.style.textDecoration === 'line-through') {
+					moverBlancos(tag, 'del');
+				}
+			});
+
+
+		}
+
+		// Reemplazar textos específicos
+		function remplazarTextos(elemento) {
+			elemento.querySelectorAll('td').forEach(function(tag) {
+				if (tag.textContent.trim() === '') return;
+				// Busca boleanos y los reemplaza por checkbox
+				if (tag.textContent.trim().toLowerCase() === 'true'
+				|| tag.textContent.trim().toLowerCase() === '1'
+				|| tag.textContent.trim().toLowerCase() === 'yes'
+				|| tag.textContent.trim().toLowerCase() === 'si'
+				|| tag.textContent.trim().toLowerCase() === 'on'
+				|| tag.textContent.trim().toLowerCase() === 'x') {
+					tag.innerHTML = '<input type="checkbox" checked>';
+					tag.style.textAlign = 'center';
+					return;
+				} else if (tag.textContent.trim().toLowerCase() === 'false') {
+					tag.innerHTML = '<input type="checkbox" disabled>';
+					tag.style.textAlign = 'center';
+					return;
+				}
+
+				if (tag.textContent.trim().toLowerCase() === 'bw'
+				|| tag.textContent.trim().toLowerCase() === 'tw'
+				|| tag.textContent.trim().toLowerCase() === 'from'
+				|| tag.textContent.trim().toLowerCase() === 'to'
+				|| tag.textContent.toLowerCase().includes('headline')
+				|| tag.textContent.toLowerCase().includes('description')
+				|| tag.textContent.toLowerCase().includes('title')
+				|| tag.textContent.toLowerCase().includes('type')
+				|| tag.textContent.toLowerCase().includes('disclaimer')
+				|| tag.textContent.toLowerCase().includes('tyc')
+				|| tag.textContent.toLowerCase().includes('block')
+				|| tag.textContent.toLowerCase().includes('bo dates')) {
+					tag.style.backgroundColor = '#e6e6e6';
+					tag.style.pointerEvents = 'none';
+					return;
+				}
+
+				// Reemplazar "all inclusive" y "todo incluido"
+				// con "all inclusive" y "todo incluido" respectivamente
+				const textos = ['all inclusive', 'All inclusive', 'all-inclusive', 'All-inclusive', 'todo incluido', 'Todo incluido', 'Grand -', 'Grand-'];
+				const ntext = ['All Inclusive', 'All Inclusive', 'All-Inclusive', 'All-Inclusive', 'Todo Incluido', 'Todo Incluido', 'Grand –', 'Grand – '];
+
+				//console.log('Reemplazando textos en:', tag.textContent);
+				textos.forEach(function(texto, idx) {
+					if (tag.textContent.includes(texto)) {
+						console.log('Texto encontrado:', texto);
+						tag.innerHTML = tag.innerHTML.replace(new RegExp(texto, 'g'), ntext[idx]);
+						console.log('Texto reemplazado:', ntext[idx]);
+						console.log('Texto completo:', tag.innerHTML);
+					}
+				});
+			});
+		}
+		// Función para agregar opciones al selector de hojas
+		function agregarOpcionSelector(nombreHoja, indice, esOculta) {
+			const opcion = document.createElement('option');
+			opcion.value = indice;
+			opcion.textContent = nombreHoja + (esOculta ? ' (oculta)' : '');
+			if (esOculta) opcion.disabled = true;
+			selectorHojas.appendChild(opcion);
+		}
+
+		// Función para crear contenedores de tabla
+		function crearContenedorTabla(tabla, indice) {
+			const contenedor = document.createElement('div');
+			contenedor.id = `hoja-${indice}`;
+			contenedor.className = 'contenedor-tabla';
+			contenedor.appendChild(tabla);
+
+			// Agregar funcionalidad de copiado
+			agregarFuncionalidadCopiado(contenedor);
+
+			return contenedor;
+		}
+
+		// Función para agregar funcionalidad de copiado
+		function agregarFuncionalidadCopiado(contenedor) {
+			contenedor.querySelectorAll('.tabla-excel td').forEach(function(celda) {
+				if (celda.textContent.trim() !== '') {
+					if (isNaN(celda.textContent.trim())
+					&& celda.textContent.trim().length > 16) {
+						celda.classList.add('celda-texto');
+					}
+
+					celda.addEventListener('click', function() {
+						// Seleccionar texto
+						const rango = document.createRange();
+						rango.selectNodeContents(this);
+						window.getSelection().removeAllRanges();
+						window.getSelection().addRange(rango);
+
+						// Copiar al portapapeles
+						try {
+							document.execCommand('copy');
+
+							// Mostrar notificación
+							const notificacion = document.createElement('span');
+							notificacion.className = 'notificacion-copiado';
+							notificacion.textContent = '✓ Copiado';
+							this.appendChild(notificacion);
+
+							// Eliminar notificación después de 1 segundo
+							setTimeout(function() {
+								notificacion.remove();
+							}, 1000);
+
+						} catch (error) {
+							console.error('Error al copiar:', error);
+						}
+					});
+				}
+			});
+		}
+
+		// Función para cambiar entre hojas
+		function cambiarHojaSeleccionada(indice) {
+			console.log('Hoja seleccionada:', indice);
+			document.querySelectorAll('.contenedor-tabla').forEach(function(contenedor, i) {
+				contenedor.style.display = 'none';
+			});
+			document.getElementById('hoja-' + indice).style.display = 'block';
+		}
+
+		// Función para mostrar errores
+		function mostrarError(mensaje) {
+			const divError = document.createElement('div');
+			divError.className = 'error';
+			divError.textContent = mensaje;
+			contenedorHojas.appendChild(divError);
+		}
+	</script>
+</body>
+</html>
