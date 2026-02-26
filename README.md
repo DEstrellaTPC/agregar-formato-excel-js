@@ -59,4 +59,8 @@ Aplicación web estática que permite cargar un archivo de Excel (`.xlsx` / `.xl
 
 ## Cómo desarrollar
 
-Este proyecto es **estático** (sin build). Basta con un servidor local opcional para evitar restricciones de algunos navegadores al abrir archivos locales:
+Este proyecto es **estático** (sin build). Basta con un servidor local opcional para evitar restricciones de algunos navegadores al abrir archivos locales.
+
+## Créditos
+
+https://sheetjs.com/ – se usa la versión 0.18.5 vía CDN para lectura y renderizado de hojas.
